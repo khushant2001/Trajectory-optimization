@@ -6,12 +6,14 @@ from mpl_toolkits.mplot3d import Axes3D
 # Setting the initial parameters. 
 
 gravity = 9.81  # gravity
+step_time = 0.2  # sec, time step for MPC
+drone_radius = 0.1 # m
+
+# Drone parameters!
 I_x = 2.4*10**(-5)  # moment of inertia along x-axis
 I_y = I_x # moment of inertia along y-axis
 I_z = 3.2*10**(-5)  # moment of inertia along z-axis
 m = .027 # mass (kg)
-step_time = 0.2  # sec, time step for MPC
-drone_radius = 0.1 # m
 bounds = 2
 v_max = 1
 v_min = -1
