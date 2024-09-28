@@ -73,7 +73,7 @@ def toy_car_obstacle_avoidance():
     # Adding constraints for the obstacle avoidance
     
     obs_x = [.3,.5,.7,.8]
-    obs_y = [.3,.7,.2,.4]
+    obs_y = [.3,.7,.2,.6]
     r0 = [.1,.1,.1,.1]
     for i in range(horizon_steps+1):
         for j in range(len(obs_x)):           
