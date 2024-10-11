@@ -173,8 +173,8 @@ class cf_publisher(Node):
 
         new_pos = np.array([x,y,z])
         new_orientation = np.array([roll,theta,psi])
-        self.cf_state_vel = (new_pos - self.cf_state_vel)/(dt/1000)
-        self.cf_rot_vel = (new_orientation - self.cf_rot_vel)/(dt/1000)
+        self.cf_state_vel = (new_pos - self.cf_state_vel)/(self.dt/1000)
+        self.cf_rot_vel = (new_orientation - self.cf_rot_vel)/(self.dt/1000)
 
     def cf_vicon_callback(self,msg_in):
 
