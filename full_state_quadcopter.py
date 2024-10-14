@@ -24,7 +24,7 @@ a_min = -4
 w_dot_max = 17.45
 w_dot_min = -17.45
 thrust_max = 1.9*m*gravity # 1.9 is the thrust to weight
-thrust_min = -thrust_max
+thrust_min = 0
 tau_max = 0.0097
 tau_min = -tau_max
 
