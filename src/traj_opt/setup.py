@@ -20,7 +20,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'cf_publisher = traj_opt.crazyflie:main'
+            'cf_publisher = traj_opt.crazyflie:main',
+            'test_script = traj_opt.test:main'
         ],
     },
 )

@@ -49,18 +49,22 @@ class cf_publisher(Node):
         # Variables initialization that will come in handy later!
         self.flag = True
 
+        # Variable for checking if the timer is called or not. 
+        self.convergance = False
+
         # Initializing varaibels to store the position,orientation, and velocities of the crazyflie. 
         self.cf_state_pos = np.array([0, 0, 0])
         self.cf_state_orientation = np.array([0, 0, 0])
         self.cf_state_vel = np.array([0, 0, 0])
         self.cf_rot_vel = np.array([0, 0, 0])
-
+        self.x0 = DM([0,0,0,0,0,0,0,0,0,0,0,0])
         # Initializing variables to store the final position of the target!
         self.target_pos = np.array([0, 0, 0])
 
         # "kk_fly" and "rccar" are the custom names. Must be changed to your vicon configuration!!!
-        #self.cf_vicon_subscriber = self.create_subscription(Position, "vicon/kk_fly/kk_fly", self.cf_vicon_callback, dt)
-        #self.target_subscriber = self.create_subscription(Position, "vicon/rccar/rccar", self.target_vicon_callback, dt)
+        self.cf_vicon_subscriber = self.create_subscription(Position, "vicon/kk_fly/kk_fly", self.cf_vicon_callback, self.dt)
+        self.target_subscriber = self.create_subscription(Position, "vicon/rccar/rccar", self.target_vicon_callback, self.dt)
+        self.X0 = np.tile(self.x0.full(), (1, self.horizon_steps + 1))
         self.timer = self.create_timer(.05,self.timer_callback)
 
     def optimization_problem(self):
@@ -76,8 +80,8 @@ class cf_publisher(Node):
         self.I_x = 2.4*10**(-5)  # moment of inertia along x-axis
         self.I_y = self.I_x # moment of inertia along y-axis
         self.I_z = 3.2*10**(-5)  # moment of inertia along z-axis
-        self.m = .027 # mass (kg)
-        self.bounds = 2
+        self.m = .033 # mass (kg)
+        self.bounds = inf
         self.v_max = 1
         self.v_min = -1
         self.w_max = 10.47
@@ -87,12 +91,12 @@ class cf_publisher(Node):
         self.w_dot_max = 17.45
         self.w_dot_min = -17.45
         self.thrust_max = 1.9*self.m*self.gravity # 1.9 is the thrust to weight
-        self.thrust_min = -self.thrust_max
+        self.thrust_min = 0
         self.tau_max = 0.0097
         self.tau_min = -self.tau_max
 
         # Number of horizon steps to look in the future!
-        self.horizon_steps = 25  # MPC horizon
+        self.horizon_steps = 10  # MPC horizon
 
         # State variables: x, y, z, psi, phi, theta, x_dot, y_dot, z_dot, r, p, q
         self.x = SX.sym('x')       # Position x
@@ -166,15 +170,18 @@ class cf_publisher(Node):
         # Constraints on the optimization variable: Control vector
         self.lbx = self.lbx + [self.thrust_min,self.tau_min,self.tau_min,self.tau_min]*(self.horizon_steps)
         self.ubx = self.ubx + [self.thrust_max,self.tau_max,self.tau_max,self.tau_max]*(self.horizon_steps)
-  
+        
+        # Creating a control prediction matrix which will be used later for the optimization!!
+        self.u0 = DM.zeros(self.n_controls, self.horizon_steps)  # Initial control guess
+
     def calc_velocities(self,x,y,z,roll,theta,psi):
 
         """Do dirty differentiation for the calculation of velocities: translation and rotation!"""
 
         new_pos = np.array([x,y,z])
         new_orientation = np.array([roll,theta,psi])
-        self.cf_state_vel = (new_pos - self.cf_state_vel)/(self.dt/1000)
-        self.cf_rot_vel = (new_orientation - self.cf_rot_vel)/(self.dt/1000)
+        self.cf_state_vel = (new_pos - self.cf_state_pos)/(self.dt/1000)
+        self.cf_rot_vel = (new_orientation - self.cf_state_orientation)/(self.dt/1000)
 
     def cf_vicon_callback(self,msg_in):
 
@@ -184,35 +191,33 @@ class cf_publisher(Node):
         self.calc_velocities(msg_in.x_trans, msg_in.y_trans, msg_in.z_trans,new_orientation[0],new_orientation[1],new_orientation[2])
         self.cf_state_pos = np.array([msg_in.x_trans, msg_in.y_trans, msg_in.z_trans])
         self.cf_state_orientation = new_orientation
+        self.x0 = DM([self.cf_state_pos[0], self.cf_state_pos[1], self.cf_state_pos[2], self.cf_state_vel[0], self.cf_state_vel[1], self.cf_state_vel[2],self.cf_state_orientation[0], self.cf_state_orientation[1], self.cf_state_orientation[2], self.cf_rot_vel[0], self.cf_rot_vel[1], self.cf_rot_vel[2]])  # state update!
 
     def target_vicon_callback(self,msg_in):
 
         """ Populating the position of the target"""
 
         self.target_pos = np.array([msg_in.x_trans, msg_in.y_trans, msg_in.z_trans])
-    
+        self.xf = DM([self.target_pos[0], self.target_pos[1], self.cf_state_pos[2], 0, 0, 0, 0, 0, 0, 0, 0, 0])  # Target state update
     
     def timer_callback(self):
-        """ This is where the optimization problem will be solved! """
-        #self.cf.commander.send_setpoint(0,0,0,10000)
-        t0 = 0
-        x0 = DM([self.cf_state_pos[0], self.cf_state_pos[1], self.cf_state_pos[2], 0, 0, 0, 0, 0, 0, 0, 0, 0])  # Initial state
-        xf = DM([self.target_pos[0], self.target_pos[1], self.cf_state_pos[2], 0, 0, 0, 0, 0, 0, 0, 0, 0])  # Target state
-        u0 = DM.zeros(self.n_controls, self.horizon_steps)  # Initial control guess
-        X0 = np.tile(x0.full(), (1, self.horizon_steps + 1))
 
-        # Start the optimization sovler!
-        while t0 < 20:
-        # Define the parameters for the MPC
-            p_numeric = vertcat(x0, xf)
+        """ This is where the optimization problem will be solved! """
+
+        if self.convergance == False:
+
+            # Start the optimization sovler!
+
+            # Define the parameters for the MPC
+            p_numeric = vertcat(self.x0, self.xf)
 
             # Initial guess for optimization variables
-            opt_init = vertcat(reshape(X0, self.n_states * (self.horizon_steps + 1), 1), reshape(u0, self.n_controls * self.horizon_steps, 1))
+            opt_init = vertcat(reshape(self.X0, self.n_states * (self.horizon_steps + 1), 1), reshape(self.u0, self.n_controls * self.horizon_steps, 1))
 
             # Solve the NLP problem
             sol = self.solver(x0=opt_init, lbx=self.lbx, ubx=self.ubx, lbg=self.lbg, ubg=self.ubg, p=p_numeric)
             solution = sol['x'].full()
-   
+
             # Extract states and control inputs from the solution
             state_values = reshape(solution[:self.n_states * (self.horizon_steps + 1)], self.n_states, self.horizon_steps + 1)
             control_values = reshape(solution[self.n_states * (self.horizon_steps + 1):], self.n_controls, self.horizon_steps)
@@ -222,17 +227,23 @@ class cf_publisher(Node):
             u = control_values[:, 0]
 
             # Send the commands to the crazyflie
-            #self.cf.commander.send_setpoint(first_state[6],first_state[7],first_state[11],u[0])
+            self.cf.commander.send_setpoint(math.degrees(first_state[6]),math.degrees(first_state[7]),math.degrees(first_state[11]),int(u[0].full().item()*65535/self.thrust_max))
 
+            print("sending//////////////////////////////")
+            print(math.degrees(first_state[6]),math.degrees(first_state[7]),math.degrees(first_state[11]),int(u[0].full().item()*(49999/self.thrust_max)+10001))
             # Update the state with first control input
-            x0 = vertcat(self.cf_state_pos,self.cf_state_vel,self.cf_state_orientation,self.cf_rot_vel)
+            #x0 = vertcat(self.cf_state_pos,self.cf_state_vel,self.cf_state_orientation,self.cf_rot_vel)
 
             # Reinitialize guesses for next iteration
-            u0 = horzcat(control_values[:, 1:], control_values[:, -1])
+            self.u0 = horzcat(control_values[:, 1:], control_values[:, -1])
 
-            X0 = horzcat(state_values[:, 1:], state_values[:, -1]) # This needs to be re-initialized
+            self.X0 = horzcat(state_values[:, 1:], state_values[:, -1])
+            
+            #time.sleep(.2)
+            #self.cf.commander.send_notify_setpoint_stop(remain_valid_milliseconds=10)
 
-            # self.cf.commander.send_notify_setpoint_stop(remain_valid_milliseconds=10)
+            if norm_2(self.x0[0:3] - self.xf[0:3]) < 0.01:
+                self.convergance = True
     def _connected(self, link_uri):
 
         """ This callback is called form the Crazyflie API when a Crazyflie
@@ -274,9 +285,9 @@ class cf_publisher(Node):
 
     def _stab_log_data(self, timestamp, data, logconf):
 
-        yaw = data['stabilizer.yaw']
-        pitch = data['stabilizer.pitch']
-        roll = data['stabilizer.roll']
+        # yaw = data['stabilizer.yaw']
+        # pitch = data['stabilizer.pitch']
+        # roll = data['stabilizer.roll']
 
         #self.state_pos = np.array([data['stateEstimate.x'], data['stateEstimate.y'], data['stateEstimate.z']])
         
@@ -305,10 +316,12 @@ class cf_publisher(Node):
     def _disconnected(self, link_uri):
         """Callback when the Crazyflie is disconnected (called in all cases)"""
         print('Disconnected from %s' % link_uri)
+        self.cf.commander.send_setpoint(0,0,0,0)
         self.is_connected = False
 
     def _disconnect(self):
         self.is_connected = False
+        self.cf.commander.send_setpoint(0,0,0,0)
         self.cf.close_link()
 
     def quat2euler(self,x,y,z,w):
@@ -340,7 +353,7 @@ class cf_publisher(Node):
         yaw = np.arctan2(siny_cosp, cosy_cosp)
 
         # Return the euler angles!
-        return np.array([math.degrees(roll), math.degrees(pitch), math.degrees(yaw)])
+        return np.array([roll, pitch, yaw])
 
     def runge_kutta_4(self,state,forces_moments):
         step_time = self.dt/1000
