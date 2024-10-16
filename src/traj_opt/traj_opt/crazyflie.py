@@ -52,19 +52,26 @@ class cf_publisher(Node):
         # Variable for checking if the timer is called or not. 
         self.convergance = False
 
+        # Variable to skip the initialization of the drone velocities for the first time step!
+        self.first_step_check = True
+
+        # Variable to update the initial values for the optimization variables but just for the first time step!
+        self.opt_var_update_first_step = True
+
         # Initializing varaibels to store the position,orientation, and velocities of the crazyflie. 
         self.cf_state_pos = np.array([0, 0, 0])
         self.cf_state_orientation = np.array([0, 0, 0])
         self.cf_state_vel = np.array([0, 0, 0])
         self.cf_rot_vel = np.array([0, 0, 0])
         self.x0 = DM([0,0,0,0,0,0,0,0,0,0,0,0])
+        self.X0 = None
+
         # Initializing variables to store the final position of the target!
         self.target_pos = np.array([0, 0, 0])
 
         # "kk_fly" and "rccar" are the custom names. Must be changed to your vicon configuration!!!
         self.cf_vicon_subscriber = self.create_subscription(Position, "vicon/kk_fly/kk_fly", self.cf_vicon_callback, self.dt)
         self.target_subscriber = self.create_subscription(Position, "vicon/rccar/rccar", self.target_vicon_callback, self.dt)
-        self.X0 = np.tile(self.x0.full(), (1, self.horizon_steps + 1))
         self.timer = self.create_timer(.05,self.timer_callback)
 
     def optimization_problem(self):
@@ -178,27 +185,41 @@ class cf_publisher(Node):
 
         """Do dirty differentiation for the calculation of velocities: translation and rotation!"""
 
-        new_pos = np.array([x,y,z])
-        new_orientation = np.array([roll,theta,psi])
-        self.cf_state_vel = (new_pos - self.cf_state_pos)/(self.dt/1000)
-        self.cf_rot_vel = (new_orientation - self.cf_state_orientation)/(self.dt/1000)
+        # If the velocities are being calculated for the first time then skip because the state initialization is 0
+        # but the actual position in the 3D space is not 0!
+        if self.first_step_check == False:
+            new_pos = np.array([x,y,z])
+            new_orientation = np.array([roll,theta,psi])
+            self.cf_state_vel = (new_pos - self.cf_state_pos)/(self.dt/1000)
+            self.cf_rot_vel = (new_orientation - self.cf_state_orientation)/(self.dt/1000)
+        else:
+            self.first_step_check = False
 
     def cf_vicon_callback(self,msg_in):
 
         """ Populating the position and orientation of the crazyflie"""
+        # Diving the translation measurements of x, y, z from vicon by 1000 to convert from mm to m!
 
         new_orientation = self.quat2euler(msg_in.x_rot,msg_in.y_rot,msg_in.z_rot,msg_in.w)
-        self.calc_velocities(msg_in.x_trans, msg_in.y_trans, msg_in.z_trans,new_orientation[0],new_orientation[1],new_orientation[2])
-        self.cf_state_pos = np.array([msg_in.x_trans, msg_in.y_trans, msg_in.z_trans])
+        self.calc_velocities(msg_in.x_trans/1000, msg_in.y_trans/1000, msg_in.z_trans/1000,new_orientation[0],new_orientation[1],new_orientation[2])
+        self.cf_state_pos = np.array([msg_in.x_trans/1000, msg_in.y_trans/1000, msg_in.z_trans/1000])
         self.cf_state_orientation = new_orientation
+        
+        # Update the state of the crazyflie!
         self.x0 = DM([self.cf_state_pos[0], self.cf_state_pos[1], self.cf_state_pos[2], self.cf_state_vel[0], self.cf_state_vel[1], self.cf_state_vel[2],self.cf_state_orientation[0], self.cf_state_orientation[1], self.cf_state_orientation[2], self.cf_rot_vel[0], self.cf_rot_vel[1], self.cf_rot_vel[2]])  # state update!
+        #self.x0 = horzcat(self.cf_state_pos,self.cf_state_vel,self.cf_state_orientation,self.cf_rot_vel)
+        
+        # Update the guess for the next optimization run only for the first initialization though!
+        if self.opt_var_update_first_step == True:
+            self.X0 = np.tile(self.x0.full(), (1, self.horizon_steps + 1))
+            self.opt_var_update_first_step = False 
 
     def target_vicon_callback(self,msg_in):
 
         """ Populating the position of the target"""
 
-        self.target_pos = np.array([msg_in.x_trans, msg_in.y_trans, msg_in.z_trans])
-        self.xf = DM([self.target_pos[0], self.target_pos[1], self.cf_state_pos[2], 0, 0, 0, 0, 0, 0, 0, 0, 0])  # Target state update
+        self.target_pos = np.array([msg_in.x_trans/1000, msg_in.y_trans/1000, 1+msg_in.z_trans/1000])
+        self.xf = DM([self.target_pos[0], self.target_pos[1], self.target_pos[2], 0, 0, 0, 0, 0, 0, 0, 0, 0])  # Target state update
     
     def timer_callback(self):
 
@@ -227,7 +248,7 @@ class cf_publisher(Node):
             u = control_values[:, 0]
 
             # Send the commands to the crazyflie
-            self.cf.commander.send_setpoint(math.degrees(first_state[6]),math.degrees(first_state[7]),math.degrees(first_state[11]),int(u[0].full().item()*65535/self.thrust_max))
+            self.cf.commander.send_setpoint(math.degrees(first_state[6]),math.degrees(first_state[7]),math.degrees(first_state[11]),int(u[0].full().item()*(49999/self.thrust_max)+10001))#int(u[0].full().item()*65535/self.thrust_max))
 
             print("sending//////////////////////////////")
             print(math.degrees(first_state[6]),math.degrees(first_state[7]),math.degrees(first_state[11]),int(u[0].full().item()*(49999/self.thrust_max)+10001))
@@ -244,6 +265,7 @@ class cf_publisher(Node):
 
             if norm_2(self.x0[0:3] - self.xf[0:3]) < 0.01:
                 self.convergance = True
+
     def _connected(self, link_uri):
 
         """ This callback is called form the Crazyflie API when a Crazyflie
@@ -425,7 +447,7 @@ def main(args=None):
         rclpy.init(args=args)
         pub = cf_publisher()
         rclpy.spin(pub)
-    except Exception as ki:
+    except KeyboardInterrupt as ki:
         print(ki)
     finally:
         pub._disconnect()

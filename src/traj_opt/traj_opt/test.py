@@ -35,7 +35,7 @@ class cf_publisher(Node):
         self.timer = self.create_timer(.05,self.timer_callback)
 
     def timer_callback(self):
-        self.cf.commander.send_setpoint(0,0,0,32000)
+        self.cf.commander.send_setpoint(0,0,0,10000)
 
     def _connected(self, link_uri):
         """ This callback is called form the Crazyflie API when a Crazyflie
