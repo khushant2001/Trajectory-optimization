@@ -13,6 +13,7 @@ https://github.com/user-attachments/assets/90b00b89-126e-4326-ad11-b87b683974eb
 ![full_scene](https://github.com/user-attachments/assets/7430d3a5-eedf-4953-b3f3-52dca80e9fbc)
 ![rccar](https://github.com/user-attachments/assets/f61cbc71-0cbc-4db9-9f09-a39edc1f6b10)
 ![crazyflie](https://github.com/user-attachments/assets/216ada0e-29f9-465d-94db-30acd821484a)
+![drone](https://github.com/user-attachments/assets/741278aa-d79e-4d5f-bcab-b8ac27ede143)
 
 ![traj_opt_rqt_graph](https://github.com/user-attachments/assets/cc044d90-6ab9-4292-8835-e9a6a7aea6ae)
 
