@@ -27,3 +27,14 @@ For Ros2 architecture, 4 packages are created: vicon_receiver (to convert the vi
 # 6. Initial Hardware Testing
 https://github.com/user-attachments/assets/4cac5d11-225e-4432-b04c-307508a24585
 
+# 7. Instructions to run
+
+## a. Running the Vicon Tracker System
+
+ros2 launch vicon_receiver client.launch.py
+
+## b. Running the node. 
+
+colcon build
+source install.setup.bash
+ros2 launch launcher cf.launch.py
