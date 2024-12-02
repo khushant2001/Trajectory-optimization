@@ -36,5 +36,7 @@ ros2 launch vicon_receiver client.launch.py
 ## b. Running the node. 
 
 colcon build
+
 source install.setup.bash
+
 ros2 launch launcher cf.launch.py
