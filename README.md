@@ -28,9 +28,13 @@ For Ros2 architecture, 4 packages are created: vicon_receiver (to convert the vi
 
 ## Test - 1
 
+Through initial tests, it can be seen that MPC sort of finds the way to reach the target but it is constantly hopping. After printing the output of the MPC, it was seen that the thrust value jumps from one extreme to the other as if the MPC keeps interupting the crazyflie publisher or its model integration is going for the wrong time step. 
+
 https://github.com/user-attachments/assets/4cac5d11-225e-4432-b04c-307508a24585
 
 ## Test - 2
+
+Fixed the hopping problem by debugging the discrepancy between the solving time of the non-linear problem and the horizon step calculation. Also re-wrote the ROS architecture to separate the MPC solver and crazyflie publisher into 2 different nodes (processes). Both nodes communicate through a custom topic which stores the MPC solution. Doing so allowed the crazyflie to have a constant heartbeat as the crazyflie publisher keeps sending commands and the MPC solves in the background. 
 
 https://github.com/user-attachments/assets/ccb1cb2e-5620-464c-a3af-91578a165ee7
 
