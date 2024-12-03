@@ -50,11 +50,19 @@ class cf_cmd_sender(Node):
         self.mpc_subscriber = self.create_subscription(Actuation, "/mpc_solution",self.mpc_callback, self.dt)
     
     def mpc_callback(self,msg_in):
+
+        """ Get the updated MPC solution from the mpc_solver node """
         self.get_logger().info("MPC Solution UPDATED!")
+
+        # Update the variable that stores the command that goes to the crazyflie!
         self.command = np.array([msg_in.roll,msg_in.pitch,msg_in.yaw_rate,msg_in.thrust])
 
     def timer_callback(self):
-        self.get_logger().info("Sending commands to Crazyflie!")
+
+        """ Send commands to the crazyflie! """
+        self.get_logger().info(f"Sending commands to Crazyflie! {self.command}")
+
+        # Use the commander API from crazyflie library to send commands!
         self.cf.commander.send_setpoint(self.command[0],self.command[1],self.command[2],int(self.command[3]))
     
     def _connected(self, link_uri):
@@ -62,7 +70,7 @@ class cf_cmd_sender(Node):
         """ This callback is called form the Crazyflie API when a Crazyflie
         has been connected and the TOCs have been downloaded."""
 
-        print('Connected to %s' % link_uri)
+        self.get_logger().info(f'Connected to %s' % link_uri)
 
         # The definition of the logconfig can be made before connecting
         self.lg_stab = LogConfig(name='Stabilizer', period_in_ms=100)
@@ -87,14 +95,14 @@ class cf_cmd_sender(Node):
             # Start the logging
             self.lg_stab.start()
         except KeyError as e:
-            print('Could not start log configuration,'
+            self.get_logger().info('Could not start log configuration,'
                   '{} not found in TOC'.format(str(e)))
         except AttributeError:
-            print('Could not add Stabilizer log config, bad configuration.')
+            self.get_logger().info('Could not add Stabilizer log config, bad configuration.')
 
     def _stab_log_error(self, logconf, msg):
         """Callback from the log API when an error occurs"""
-        print('Error when logging %s: %s' % (logconf.name, msg))
+        self.get_logger().info('Error when logging %s: %s' % (logconf.name, msg))
 
     def _stab_log_data(self, timestamp, data, logconf):
 
@@ -118,13 +126,13 @@ class cf_cmd_sender(Node):
     def _connection_failed(self, link_uri, msg):
         """Callback when connection initial connection fails (i.e no Crazyflie
         at the specified address)"""
-        print('Connection to %s failed: %s' % (link_uri, msg))
+        self.get_logger().info(f'Connection to %s failed: %s' % (link_uri, msg))
         self.is_connected = False
 
     def _connection_lost(self, link_uri, msg):
         """Callback when disconnected after a connection has been made (i.e
         Crazyflie moves out of range)"""
-        print('Connection to %s lost: %s' % (link_uri, msg))
+        self.get_logger().info(f'Connection to %s lost: %s' % (link_uri, msg))
 
     def _disconnected(self, link_uri):
         """Callback when the Crazyflie is disconnected (called in all cases)"""
