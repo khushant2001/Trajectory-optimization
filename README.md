@@ -106,6 +106,22 @@ https://github.com/user-attachments/assets/601fca65-f66f-42e9-b11f-3b51828654dc
 
 ## 4a) Setting up the model!
 
+State vector
+
+$$
+\mathbf{x} = \begin{bmatrix}
+x & y & z & \dot{x} & \dot{y} & \dot{z} & \phi & \theta & \psi & p & q & r
+\end{bmatrix}
+$$
+
+Control Vector
+
+$$
+\mathbf{u} = \begin{bmatrix}
+T & \tau_\phi & \tau_\theta & \tau_\psi
+\end{bmatrix}
+$$
+
 Translation velocities
 
 $$
