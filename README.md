@@ -1,14 +1,108 @@
 As my Masters project, I aim to perform real-time trajectory optimization for obstacle avoidance on Crazyflie - a mini quadcopter. This experimental project seeks to integrate Crazyflie’s existing attitude control with a high-level model predictive controller for online optimization. CasADi is used to formulate the MPC as a non-linear programming problem. Both simulation and hardware testing are performed. For the latter, Robotic Operating System (Ros 2) is used to integrate Crazyflie’s firmware, motion capture system (Vicon), and the high-level controller. For the model itself, the full state 12 DOF model is used to increase the accuracy of the program. The mass, intertias, and the experimental limits to velocities and thrust are determined from the bitcraze documentation. While the updates to the crazyflie's position and orientation are derived from the motion capture system, the velocities are calculated using dirty differentiation. To transform the problem from an optimization problem to a non-linear programming problem, multiple shooting is used to discretize the dynamics. Doing so allows to use both the state and control variables as optimization variables (also allowing to give a better approximation for the starting solution). Other methods like single shooting and direct collocation are tested in simulation. Hardware testing is still in progress; initial results can be seen below. 
 
-# 1. Simulation Example: Toy Car Trajectory Optimization
+# 1. Model predictive problem formulation as a non-linear problem (NLP)
+
+## 1a) Formulating MPC problem as an optimization problem
+
+$$
+\min_{\mathbf{u}} J_N(\mathbf{x}_0, \mathbf{u}) = \sum _{k=0}^{N-1} \ell(\mathbf{x}(k), \mathbf{u}(k))
+$$
+
+**subject to:**
+
+$$
+\mathbf{x}_u(k+1) = \mathbf{f}(\mathbf{x}_u(k), \mathbf{u}(k)), (dynamics)
+$$
+
+$$
+\mathbf{x}_u(0) = \mathbf{x}_0,
+$$
+
+$$
+\mathbf{u}(k) \in U, \quad \forall k \in [0, N-1],
+$$
+
+$$
+\mathbf{x}_u(k) \in X, \quad \forall k \in [0, N].
+$$
+
+## 1b) Structure of the Non-linear problem
+
+$$
+\min_{\mathbf{w}} \Phi(\mathbf{w})
+$$
+
+**Subject to:**
+
+$$
+g_1(\mathbf{w}) \leq 0, (inequality-constraints)
+$$
+
+$$
+g_2(\mathbf{w}) = 0. (equality-constraints)
+$$
+
+## 1c) Transcription methods
+
+In order to convert the MPC optimization problem into a non-linear problem for CasaDy to solve (this process if referred to as transcription), we need to discretize the dynamic constraints and also introduce the constraints. Some common methods that are used for transcription are: single shooting, multiple shooting, direct collocation etc. For this project, single and multiple shooting methods are used and the results are compared (only for simulation examples). For single shooting, only the control inputs are optimized. Accordingly, the state elements are calculated based on the optimized control inputs. However, with multiple shooting, the states corresponding to the future horizon steps are also treated as constraints (at every step) which allows for the state variables to be optimization variables. This transforms the optimization problem as follows: 
+
+**Cost function for multiple shooting:**
+
+$$
+\min_{\mathbf{u,x}} J_N(\mathbf{x}_0, \mathbf{u}) = \sum _{k=0}^{N-1} \ell(\mathbf{x}(k), \mathbf{u}(k))
+$$
+
+Doing so does make the problem bigger (because now you have more optimization variables) but it lifts the problem to a higher dimension making the convergence much easier. Besides, multiple shooting also allows for initialization of the state variables. This allows for providing a better starting guess for the solver, which makes life easier in the long run. 
+
+## 1d) Constraint definition
+
+
+# 2. Simulation Example: Toy Car Trajectory Optimization
+
+Dynamics
+
+$$
+\dot{x} = v \cdot \cos(\theta)
+$$
+
+$$
+\dot{y} = v \cdot \sin(\theta)
+$$
+
+$$
+\dot{\theta} = w
+$$
+
+Control Vector
+
+$$
+\mathbf{u} = \begin{bmatrix} 
+\text{velocity} \\
+\text{angular velocity}
+\end{bmatrix}
+$$
+
 https://github.com/user-attachments/assets/137c417f-359c-431a-b6d0-a26160b05b8e
 
-# 2. Simulation Example: Toy Car Trajectory Optimization While Avoiding Obstacles
+# 3. Simulation Example: Toy Car Trajectory Optimization While Avoiding Obstacles
+
+In order to make sure that the car goes around the obstacles as it finds the new trajectory, the optimization problem is constrained to keep the signed distance between the obstacle and the car greater than some minimum. It needs to be understood that formulating this constraint like follows will make the optimization problem difficult to solve (because its not convex).  
+
+$$
+d = \sqrt{(x_2 - x_1)^2 + (y_2 - y_1)^2 + (z_2 - z_1)^2}
+$$
+
+Accordingly, the constraint needs to formulated as follows which retains the convex properties and makes the problem easier to converge. 
+
+$$
+d^2 - \left( (x_2 - x_1)^2 + (y_2 - y_1)^2 + (z_2 - z_1)^2 \right) \leq 0
+$$
+
 https://github.com/user-attachments/assets/601fca65-f66f-42e9-b11f-3b51828654dc
 
-# 3. Simulation Example: Crazyflie Trajectory Optimization While Avoiding Obstacles
+# 4. Simulation Example: Crazyflie Trajectory Optimization While Avoiding Obstacles
 
-## 3a) Setting up the model!
+## 4a) Setting up the model!
 
 Translation velocities
 
@@ -66,9 +160,27 @@ $$
 \dot{r} = \frac{I_x - I_y}{I_z} p q + \frac{\tau_\psi}{I_z}
 $$
 
+## 4b) Model Parameters for the MPC optimization problem initialization. 
+
+All the following parameters are SI units. For finding the thrust_max, the thrust to weight ratio (1.9) is determined from the Bitcraze documentation. Similarly, w_max (maximum angular velocity), a_max (maximum translational acceleration), inertias (I_x, I_y, I_z) are all determined from the documentation as well. The following constraints are specified for the control inputs and state variables. 
+
+| **Parameter**            | **Value**                  | **Parameter**           | **Value**                  |
+|--------------------------|----------------------------|-------------------------|----------------------------|
+| gravity                  | 9.81                       | v_max                     | 1                          |
+| drone_radius             | 0.1                        | v_min                   | -v_max     |
+| I_x                       | 2.4*10^{-5}  | w_max                 | 10.47                      |
+|  I_y                     |  I_x                 | w_min                  | -w_max     |
+|  I_z                      |  3.2*10^{-5}  | a_max                 | 4                          |
+| mass                        | 0.027                      | a_min                 |  -4                  |
+| bounds                   | inf              | w_dot_max             | 17.45                     |
+| v_max                   | 1                          | w_dot_min               | -w_dot_max|
+| thrust_max               | 1.9 x m x gravity | thrust_min             | 0                          |
+| tau_max                  | 0.0097                     | tau_min                  | -tau_max   |
+
+
 https://github.com/user-attachments/assets/90b00b89-126e-4326-ad11-b87b683974eb
 
-# 4. Vicon Setup
+# 5. Vicon Setup
 ![full_scene](https://github.com/user-attachments/assets/7430d3a5-eedf-4953-b3f3-52dca80e9fbc)
 
 ![rccar](https://github.com/user-attachments/assets/f61cbc71-0cbc-4db9-9f09-a39edc1f6b10)
@@ -78,12 +190,12 @@ https://github.com/user-attachments/assets/90b00b89-126e-4326-ad11-b87b683974eb
 
 ![rccar_markers](https://github.com/user-attachments/assets/e95ade61-4bc0-435e-828c-496a0426f154)
 
-# 5. Robotic Operating System Architecture
+# 6. Robotic Operating System Architecture
 For Ros2 architecture, 4 packages are created: vicon_receiver (to convert the vicon radio messages to Ros2 topics), traj_opt (which contains the 2 nodes: mpc_solver and cf_publisher), custom_msgs (custom topic and message to have the 2 nodes interacting), launcher (to create the launch file). The cf_publisher node takes care of connecting with the Crayzflie over the radio and providing a constant heartbeat (command) after every 10 msec. The mpc_solver node takes care of getting measurments from the vicon, computing the state of the crazyflie, and solving the mpc to generate the next solution. This solution - roll, pitch, yaw_rate, and thrust - are then transmitted to the crazyflie node through the custom topic - mpc_solution. 
 
 ![traj_opt_rqt_graph](https://github.com/user-attachments/assets/cc044d90-6ab9-4292-8835-e9a6a7aea6ae)
 
-# 6. Hardware Testing
+# 7. Hardware Testing
 
 ## Test - 1
 
@@ -97,7 +209,7 @@ Fixed the hopping problem by debugging the discrepancy between the solving time 
 
 https://github.com/user-attachments/assets/ccb1cb2e-5620-464c-a3af-91578a165ee7
 
-# 7. Instructions to run
+# 8. Instructions to run
 
 ## a. Running the Vicon Tracker System
 
