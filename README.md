@@ -28,6 +28,8 @@ $$
 
 ## 1b) Structure of the Non-linear problem
 
+A standard formulation of the non-linear problem is given below. $\Phi$ is the cost function which the optimization routine tries to minimize. $g_1$ and $g_2$ are the constraints provided to the problem. NlP can be described as linear or quadratic based on the degree of the cost function or the constraints. NLP with quadratic cost or constraints is referred to as a quadratic problem. A NLP is also said to be linear if the cost function and the constraints are affine, meaning that these functions can be expressed as linear combinations of the optimization variables ('w' in this case). 
+
 $$
 \min_{\mathbf{w}} \Phi(\mathbf{w})
 $$
