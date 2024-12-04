@@ -5,6 +5,10 @@ As my Masters project, I aim to perform real-time trajectory optimization for ob
 ## 1a) Formulating MPC problem as an optimization problem
 
 $$
+\ell(\mathbf{x}, \mathbf{u}) = \left\|\mathbf{x}_u - \mathbf{x}^r\right\|_Q^2 + \left\|\mathbf{u} - \mathbf{u}^r\right\|_R^2
+$$
+
+$$
 \min_{\mathbf{u}} J_N(\mathbf{x}_0, \mathbf{u}) = \sum _{k=0}^{N-1} \ell(\mathbf{x}(k), \mathbf{u}(k))
 $$
 
