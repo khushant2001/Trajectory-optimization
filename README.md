@@ -7,6 +7,65 @@ https://github.com/user-attachments/assets/137c417f-359c-431a-b6d0-a26160b05b8e
 https://github.com/user-attachments/assets/601fca65-f66f-42e9-b11f-3b51828654dc
 
 # 3. Simulation Example: Crazyflie Trajectory Optimization While Avoiding Obstacles
+
+## 3a) Setting up the model!
+
+Translation velocities
+
+$$
+\dot{x} = (\cos\theta \cos\psi) \dot{x} - \sin\psi \dot{y} + (\sin\theta \cos\psi) \dot{z}
+$$
+
+$$
+\dot{y} = (\cos\theta \sin\psi) \dot{x} + \cos\psi \dot{y} + (\sin\theta \sin\psi) \dot{z}
+$$
+
+$$
+\dot{z} = -\sin\theta \dot{x} + \cos\theta \dot{z}
+$$
+
+Rotational velocities
+
+$$
+\dot{\phi} = p + q \sin\phi \tan\theta + r \cos\phi \tan\theta
+$$
+
+$$
+\dot{\theta} = q \cos\phi - r \sin\phi
+$$
+
+$$
+\dot{\psi} = \frac{q \sin\phi + r \cos\phi}{\cos\theta}
+$$
+
+Translational Accelerations
+
+$$
+a_x = \frac{\text{thrust}}{m} \left( \cos\phi \sin\theta \cos\psi + \sin\phi \sin\psi \right) - (q z - r y)
+$$
+
+$$
+a_y = \frac{\text{thrust}}{m} \left( \cos\phi \sin\theta \sin\psi - \sin\phi \cos\psi \right) + (q x - r z)
+$$
+
+$$
+a_z = \frac{\text{thrust}}{m} \left( \cos\phi \cos\theta \right) - g + (p y - q x)
+$$
+
+Rotational Accelerations
+
+$$
+\dot{p} = \frac{I_y - I_z}{I_x} q r + \frac{\tau_\phi}{I_x}
+$$
+
+$$
+\dot{q} = \frac{I_z - I_x}{I_y} p r + \frac{\tau_\theta}{I_y}
+$$
+
+$$
+\dot{r} = \frac{I_x - I_y}{I_z} p q + \frac{\tau_\psi}{I_z}
+$$
+
 https://github.com/user-attachments/assets/90b00b89-126e-4326-ad11-b87b683974eb
 
 # 4. Vicon Setup
