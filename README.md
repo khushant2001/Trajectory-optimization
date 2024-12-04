@@ -179,6 +179,30 @@ All the following parameters are SI units. For finding the thrust_max, the thrus
 | thrust_max               | 1.9 x m x gravity | thrust_min             | 0                          |
 | tau_max                  | 0.0097                     | tau_min                  | -tau_max   |
 
+## 4c) Runge Kutta 4 Integration Scheme
+
+After failing to get the integration converged through Euler integration, RK4 is used. The equations for the same are given below:
+
+$$
+k_1 = \Delta t \cdot \mathbf{f}(\mathbf{y}_n, t_n)
+$$
+
+$$
+k_2 = \Delta t \cdot \mathbf{f}\left(\mathbf{y}_n + \frac{1}{2} k_1, t_n + \frac{1}{2} \Delta t\right)
+$$
+
+$$
+k_3 = \Delta t \cdot \mathbf{f}\left(\mathbf{y}_n + \frac{1}{2} k_2, t_n + \frac{1}{2} \Delta t\right)
+$$
+
+$$
+k_4 = \Delta t \cdot \mathbf{f}(\mathbf{y}_n + k_3, t_n + \Delta t)
+$$
+
+$$
+\mathbf{y}_{n+1} = \mathbf{y}_n + \frac{1}{6} \left(k_1 + 2k_2 + 2k_3 + k_4\right)
+$$
+
 
 https://github.com/user-attachments/assets/90b00b89-126e-4326-ad11-b87b683974eb
 
