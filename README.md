@@ -241,6 +241,9 @@ For Ros2 architecture, 4 packages are created: vicon_receiver (to convert the vi
 
 ![traj_opt_rqt_graph](https://github.com/user-attachments/assets/cc044d90-6ab9-4292-8835-e9a6a7aea6ae)
 
+![rqt_graph_2](https://github.com/user-attachments/assets/aaca98d6-e932-4617-888e-cb1b37c9db6c)
+
+
 # 7. Hardware Testing
 
 ## Test - 1
