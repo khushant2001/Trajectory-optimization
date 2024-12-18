@@ -13,7 +13,8 @@ find_package(geometry_msgs REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
-  "msg/Actuation.msg"
+  "msg/Actuation.msg",
+  "msg/Model_info.msg"
   DEPENDENCIES geometry_msgs
  )
 
