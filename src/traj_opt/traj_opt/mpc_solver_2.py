@@ -6,6 +6,9 @@ shooting is used as the transcription technique to discretize the dynamics. Also
 custom publishers for recording state information and the transmission of the MPC solution. 
 Using RK4 as the integrator of the dynamics in MPC. 
 
+NOTE!: STILL UNDER WORK!!!!!!!This mpc solver does not use 12 state dof model. Rather it uses a decoupled model
+with 10 states. x = [x,y,z,x_dot,y_dot,z_dot,roll,pitch,yaw]
+
 """
 import rclpy
 from rclpy.node import Node
@@ -13,7 +16,7 @@ from vicon_receiver.msg import Position
 from casadi import *
 import numpy as np
 import math
-from custom_msgs.msg import Actuation, StateInfo
+from custom_msgs.msg import Actuation
 
 class solve_mpc(Node):
 
@@ -22,9 +25,12 @@ class solve_mpc(Node):
         # Call the constructor of the parent class: Node!
         super().__init__('mpc_solver')
 
-        # TIme step for the integration of the model in the MPC!
-        self.dt = 50 # msec. For the model integration
+        # Time step for the integration of the model in the MPC!
+        self.dt = 50 # msec to call the callback for getting data from vicon!
 
+        # Time constants for the roll, pitch, and yaw responses. 
+        self.time_constant = 0.1 # sec
+        
         # Time step for the update of the vicon topics to get velocities through dirty differentiation!
         self.vicon_topic_update_time = 0.05 # sec! Got this from the vicon topic information!!!
 
@@ -65,42 +71,20 @@ class solve_mpc(Node):
 
         """ "kk_fly" and "rccar" are the custom names. Must be changed according to your vicon configuration!!!"""
 
-        # Create subscription to get the target pose from the vicon!
-        self.target_subscriber = self.create_subscription(Position, "vicon/rccar/rccar", self.target_vicon_callback, 10)
-
         # Create subscription to get the crazyflie pose from the vicon! 
         self.cf_vicon_subscriber = self.create_subscription(Position, "vicon/kk_fly/kk_fly", self.cf_vicon_callback, 10)
+
+        # Create subscription to get the target pose from the vicon!
+        self.target_subscriber = self.create_subscription(Position, "vicon/rccar/rccar", self.target_vicon_callback, 10)
 
         # Create publisher to send the MPC solution to the cf_publisher!
         self.mpc_publisher = self.create_publisher(Actuation, "/mpc_solution", 10)
 
-        # Create publisher to record the true state of the crazyflie (Used later in the plotjuggler)
-        self.true_state_publisher = self.create_publisher(StateInfo, "/true_state", 10)
+        # Create publisher to record the velocities (Used later in the plotjuggler)
+        self.state_publisher = self.create_publisher(Actuation, "/state_calcs", 10)
 
-        # Create publisher to record the estimated state of the crazyflie (for all horizon steps) derived from the model in the MPC!
-        self.model_state_publisher = self.create_publisher(StateInfo, "/model_state_calcs", 10)
-        self.model_state_publisher2 = self.create_publisher(StateInfo, "/model_state_calcs2", 10)
-        self.model_state_publisher3 = self.create_publisher(StateInfo, "/model_state_calcs3", 10)
-        self.model_state_publisher4 = self.create_publisher(StateInfo, "/model_state_calcs4", 10)
-        self.model_state_publisher5 = self.create_publisher(StateInfo, "/model_state_calcs5", 10)
-        self.model_state_publisher0 = self.create_publisher(StateInfo, "/model_state_calcs0", 10)
-        
-        # Create publisher to get the target message
-        self.target_publisher = self.create_publisher(StateInfo, "/Target", 10)
-        
-        # Creating a message instance to record the state info of the crazyflie from the vicon!
-        self.true_state_msg = StateInfo()
-
-        # Creating message instances to record the state info (for all horizon steps) of the crazyflie model!
-        self.model_state_msg = StateInfo()
-        self.model_state_msg2 = StateInfo()
-        self.model_state_msg3 = StateInfo()
-        self.model_state_msg4 = StateInfo()
-        self.model_state_msg5 = StateInfo()
-        self.model_state_msg0 = StateInfo()
-        
-        # Create message instance for the target state!
-        self.target_msg = StateInfo()
+        # Creating a message instance to record the state info of the crazyflie!
+        self.state_msg = Actuation()
 
         # Create timer that solves the MPC!
         self.timer = self.create_timer(.05, self.timer_callback)    
@@ -120,10 +104,10 @@ class solve_mpc(Node):
         self.I_y = self.I_x # kg*m^2 moment of inertia along y-axis
         self.I_z = 3.2*10**(-5)  # kg*m^2 moment of inertia along z-axis
         self.m = .033 # mass (kg). Barebone + markers + hot glue. Measured on a precise scale. 
-        self.bounds = 1000 # These are the bounds for the x, y, z in the 3D space. Could be made tighter 
+        self.bounds = inf # These are the bounds for the x, y, z in the 3D space. Could be made tighter 
         self.v_max = 1 # m/sec. 
         self.v_min = -self.v_max
-        self.w_max = 2.0#10.47 # rad/sec. Got from the official documentation of Bitcraze. 
+        self.w_max = 10.47 # rad/sec. Got from the official documentation of Bitcraze. 
         self.w_min = -self.w_max # rad/sec
         self.a_max = 4 # m/sec^2
         self.a_min = -self.a_max # m/sec^2
@@ -131,7 +115,7 @@ class solve_mpc(Node):
         self.w_dot_min = -self.w_dot_max # rad/sec^2
         self.thrust_max = 1.9*self.m*self.gravity # 1.9 is the thrust to weight ratio
         self.thrust_min = 0 # No reversible props so no reversible thrust!
-        self.tau_max = 0.001#0.0097 # Nm. Thrust produced by each motor = 0.294 N and the armlength is about 33 m. Torque = F x r
+        self.tau_max = 0.0097 # Nm. Thrust produced by each motor = 0.294 N and the armlength is about 33 m. Torque = F x r
         self.tau_min = -self.tau_max
 
         # Number of horizon steps to look in the future!
@@ -153,13 +137,13 @@ class solve_mpc(Node):
 
         # Control inputs: thrust, tau_phi (roll torque), tau_theta (pitch torque), tau_psi (yaw torque)
         self.thrust = SX.sym('thrust')  
-        self.tau_phi = SX.sym('tau_phi')  # Roll torque
-        self.tau_theta = SX.sym('tau_theta')  # Pitch torque
-        self.tau_psi = SX.sym('tau_psi')  # Yaw torque
+        self.roll_input = SX.sym('roll_input')  # Roll input
+        self.pitch_input = SX.sym('pitch_input')  # Pitch input
+        self.yaw_rate_input = SX.sym('yaw_rate_input')  # Yaw torque
 
         # State and control vectors
         state_vector = vertcat(self.x, self.y, self.z, self.x_dot, self.y_dot, self.z_dot, self.phi, self.theta, self.psi, self.p, self.q, self.r)
-        control_vector = vertcat(self.thrust, self.tau_phi, self.tau_theta, self.tau_psi)
+        control_vector = vertcat(self.thrust, self.roll_input, self.pitch_input, self.yaw_rate_input)
         self.n_states = state_vector.size1()
         self.n_controls = control_vector.size1()
 
@@ -176,20 +160,17 @@ class solve_mpc(Node):
         self.obj = 0 # Cost function!!!
 
         # Define the weighting matrices!
-        Q = 100*DM.eye(3)
+        Q = 100*DM.eye(self.n_states)
         R = 100*DM.eye(self.n_controls)
 
         # Start the for loop to build up the constraint vector and the cost function!!!
         for i in range(self.horizon_steps):
             curr_state = self.state_prediction[:,i]
             curr_input = self.control_prediction[:,i]
-            # self.obj = self.obj + ((curr_state[0:3] - self.p[self.n_states:self.n_states+3]).T @ Q @ (curr_state[0:3] - self.p[self.n_states:3+self.n_states])) + curr_input.T @ R @ curr_input
-            self.obj = self.obj + curr_input.T @ R @ curr_input
-            next_state_estimate = self.runge_kutta_4(curr_state,curr_input)
+            self.obj = self.obj + ((curr_state - self.p[self.n_states:self.n_states*2]).T @ Q @ (curr_state - self.p[self.n_states:2*self.n_states])) + curr_input.T @ R @ curr_input
+            next_state_estimate = self.runge_kutta_4(curr_state, curr_input, i)
             self.g = vertcat(self.g,self.state_prediction[:,i+1] - next_state_estimate) # Adding up the constraints in the g function!
 
-        self.obj = self.obj + ((self.state_prediction[0:3,-1] - self.p[self.n_states:self.n_states+3]).T @ Q @ (curr_state[0:3,-1] - self.p[self.n_states:3+self.n_states])) 
-        
         # Formulate the optimization problem and the corresponding optimization variables!
         self.opt_vars = vertcat(reshape(self.state_prediction,self.n_states*(self.horizon_steps + 1),1),reshape(self.control_prediction,self.n_controls*self.horizon_steps,1)) # You are not just optimizing v and w but all instances of them!
         self.nlp_prob = {}
@@ -210,8 +191,8 @@ class solve_mpc(Node):
         self.ubx = [self.bounds,self.bounds,self.bounds,self.v_max,self.v_max,self.v_max,inf,inf,inf,self.w_max,self.w_max,self.w_max] * ((self.horizon_steps+1))
 
         # Constraints on the optimization variable: Control vector
-        self.lbx = self.lbx + [self.thrust_min,self.tau_min,self.tau_min,self.tau_min]*(self.horizon_steps)
-        self.ubx = self.ubx + [self.thrust_max,self.tau_max,self.tau_max,self.tau_max]*(self.horizon_steps)
+        self.lbx = self.lbx + [self.thrust_min, -inf, -inf, self.w_min]*(self.horizon_steps)
+        self.ubx = self.ubx + [self.thrust_max, inf, inf, self.w_max]*(self.horizon_steps)
         
         # Creating a control prediction matrix which will be used later for the optimization!!
         self.u0 = DM.zeros(self.n_controls, self.horizon_steps)  # Initial control guess
@@ -236,12 +217,23 @@ class solve_mpc(Node):
             self.cf_state_vel = self.alpha*cf_state_vel_temp + (1-self.alpha)*self.cf_state_vel
             self.cf_rot_vel = self.alpha*cf_rot_vel_temp + (1-self.alpha)*self.cf_rot_vel
             
-            # Concatenate the true states and publish them to plotjuggler for analysis!
-            true_state = [new_pos[0],new_pos[1],new_pos[2],self.cf_state_vel[0],self.cf_state_vel[1],self.cf_state_vel[2],new_orientation[0],new_orientation[1],new_orientation[2],self.cf_rot_vel[0],self.cf_rot_vel[1],self.cf_rot_vel[2]]
-            self.true_state_msg.state = true_state
+            # Record the state information regarding linear velocity!
+            self.state_msg.vel.linear.x = self.cf_state_vel[0]
+            self.state_msg.vel.linear.y = self.cf_state_vel[1]
+            self.state_msg.vel.linear.z = self.cf_state_vel[2]
+
+            # Record the state information regarding angular velocity
+            self.state_msg.vel.angular.x = self.cf_rot_vel[0]
+            self.state_msg.vel.angular.y = self.cf_rot_vel[1]
+            self.state_msg.vel.angular.z = self.cf_rot_vel[2]
+
+            # Record the state information regarding orientation
+            self.state_msg.orientation.x = new_orientation[0]
+            self.state_msg.orientation.y = new_orientation[1]
+            self.state_msg.orientation.z = new_orientation[2]
 
             # Publish the message for the Plotjuggler to record it!
-            self.true_state_publisher.publish(self.true_state_msg)
+            self.state_publisher.publish(self.state_msg)
         
         else:
             self.first_step_check = False
@@ -250,14 +242,10 @@ class solve_mpc(Node):
     def cf_vicon_callback(self,msg_in):
 
         """ Populating the position and orientation of the crazyflie"""
+        # Dividing the translation measurements of x, y, z from vicon by 1000 to convert from mm to m!
 
         self.get_logger().info("Updating Crazyflie's pose")
-
-        # Dividing the translation measurements of x, y, z from vicon by 1000 to convert from mm to m! 
-        # And convert to euler angles!
         new_orientation = self.quat2euler(msg_in.w, msg_in.x_rot, msg_in.y_rot, msg_in.z_rot)
-
-        # Calculate the velocities and update state variables!
         self.calc_velocities(msg_in.x_trans/1000, msg_in.y_trans/1000, msg_in.z_trans/1000,new_orientation)
         self.cf_state_pos = np.array([msg_in.x_trans/1000, msg_in.y_trans/1000, msg_in.z_trans/1000])
         self.cf_state_orientation = new_orientation
@@ -268,11 +256,6 @@ class solve_mpc(Node):
         # Update the guess for the next optimization run only for the first initialization though!
         if self.opt_var_update_first_step == True:
             self.X0 = np.tile(self.x0.full(), (1, self.horizon_steps + 1))
-
-            # Improve the guess by a simple linear interpolation between the final and target position!
-            delta_x = (self.xf - self.x0)/self.horizon_steps
-            for i in range(self.horizon_steps):
-                self.X0[0:3,i+1] = (delta_x[0:3]*i + self.x0[0:3]).full().squeeze()
             self.opt_var_update_first_step = False 
 
     def target_vicon_callback(self,msg_in):
@@ -284,14 +267,11 @@ class solve_mpc(Node):
         # Adding 1 meter elevation to the altitude of the target so the drone doesn't collide with the rccar (target)
         self.target_pos = np.array([msg_in.x_trans/1000, msg_in.y_trans/1000, 1+msg_in.z_trans/1000])
         self.xf = DM([self.target_pos[0], self.target_pos[1], self.target_pos[2], 0, 0, 0, 0, 0, 0, 0, 0, 0])  # Target state update
-        
-        # Publish the target pose to the plotjuggler!
-        self.target_msg.state = [self.target_pos[0],self.target_pos[1],self.target_pos[2], 0., 0., 0., 0., 0., 0., 0., 0., 0.]
-        self.target_publisher.publish(self.target_msg)
-
+    
     def timer_callback(self):
 
         """ This is where the optimization problem will be solved! """
+
         self.get_logger().info("Solving the MPC!")
 
         # Creating instance of the message that will be published by the mpc_solver node. 
@@ -315,9 +295,9 @@ class solve_mpc(Node):
             # Extract the solution
             solution = sol['x'].full()
 
-            # Print the solver stats: Solution status & time took to get the solution
+            # Print the time MPC took to get the solution
             stats = self.solver.stats()
-            self.get_logger().info(f"Solver status: {stats['return_status']}")
+
             self.get_logger().info(f"Sol time: {stats['t_wall_total']}")
 
             # Extract states and control inputs from the solution
@@ -325,11 +305,11 @@ class solve_mpc(Node):
             control_values = reshape(solution[self.n_states * (self.horizon_steps + 1):], self.n_controls, self.horizon_steps)
 
             # Extract the commands that are to be sent to the crazyflie!
-            first_state = state_values[:,1].full()
+            first_state = state_values[:,0]
             u = control_values[:, 0]
 
             # Send the commands to the crazyflie
-            self.mpc_solution = np.array([math.degrees(first_state[6]),math.degrees(first_state[7]),math.degrees(first_state[11]),int(u[0].full().item()*(49999/self.thrust_max)+10001)])#int(u[0].full().item()*65535/self.thrust_max))
+            self.mpc_solution = np.array([math.degrees(u[1]),math.degrees(u[2]),math.degrees(u[3]),int(u[0].full().item()*(49999/self.thrust_max)+10001)])#int(u[0].full().item()*65535/self.thrust_max))
             
             # Update the custom message with mpc solution!
             msg.roll = self.mpc_solution[0]
@@ -340,30 +320,12 @@ class solve_mpc(Node):
             # Publish the mpc_solution!
             self.mpc_publisher.publish(msg)
 
-            # Record the estimated state of the crazyflie from the model in MPC!
-            self.model_state_msg.state = first_state.flatten().tolist()
-            self.model_state_msg2.state = (state_values[:,2].full()).flatten().tolist()
-            self.model_state_msg3.state = (state_values[:,3].full()).flatten().tolist()
-            self.model_state_msg4.state = (state_values[:,4].full()).flatten().tolist()
-            self.model_state_msg5.state = (state_values[:,5].full()).flatten().tolist()
-            self.model_state_msg0.state = (state_values[:,0].full()).flatten().tolist()
-
-            # Publish the message so that the plotjuggler can record it. 
-            self.model_state_publisher.publish(self.model_state_msg)
-            self.model_state_publisher2.publish(self.model_state_msg2)
-            self.model_state_publisher3.publish(self.model_state_msg3)
-            self.model_state_publisher4.publish(self.model_state_msg4)
-            self.model_state_publisher5.publish(self.model_state_msg5)
-            self.model_state_publisher0.publish(self.model_state_msg0)
-
             # Reinitialize guesses (both state and control input) for next iteration
             self.u0 = horzcat(control_values[:, 1:], control_values[:, -1])
             self.X0 = horzcat(state_values[:, 1:], state_values[:, -1])
             
             # Criteria for convergance of the MPC solution!
             if norm_2(self.x0[0:3] - self.xf[0:3]) < 0.01:
-
-                # Turn on the convergance flag for the MPC to stop solving!
                 self.convergance = True
 
                 # Sending a constant thrust command for the crazyflie to hover in place!
@@ -405,13 +367,24 @@ class solve_mpc(Node):
         # Return the euler angles!
         return np.array([roll, pitch, yaw])
 
-    def runge_kutta_4(self,state,forces_moments):
+    def runge_kutta_4(self,state,forces_moments, step_number):
 
         # Look at semi-implicit euler!
 
         """ Integration routine (Rk4) to solve the differential equations"""
         
         step_time = self.dt/1000
+
+        # Rotational angles information!
+        roll = roll + exp(-step_time*step_number/self.time_constant)*forces_moments[1]
+        roll_rate = (-1/self.time_constant)*exp(-step_number*step_time/self.time_constant)
+
+        pitch = pitch + exp(-step_time*step_number/self.time_constant)*forces_moments[2]
+        pitch_rate = (-1/self.time_constant)*exp(-step_number*step_time/self.time_constant)
+        
+        yaw = yaw - self.time_constant*exp(-step_time*step_number/self.time_constant)*yaw_rate
+        yaw_rate = yaw_rate + exp(-step_time*step_number/self.time_constant)*forces_moments[3]
+        
         k1 = self.dynamics(state, forces_moments)
         k2 = self.dynamics(state + step_time/2.*k1, forces_moments)
         k3 = self.dynamics(state + step_time/2.*k2, forces_moments)
@@ -432,12 +405,6 @@ class solve_mpc(Node):
         x_dot = state[3]
         y_dot = state[4]
         z_dot = state[5]
-        phi = state[6]
-        theta = state[7]
-        psi = state[8]
-        p = state[9]
-        q = state[10]
-        r = state[11]
 
         # Extract the control actuation!
         thrust = control[0]
@@ -446,18 +413,6 @@ class solve_mpc(Node):
         tau_psi = control[3]
 
         # Define the entries of the rotation matrices!
-        # R11 = cos(theta) * cos(psi)
-        # R12 = sin(phi) * sin(theta) * cos(psi) - cos(phi) * sin(psi)
-        # R13 = cos(phi) * sin(theta) * cos(psi) + sin(phi) * sin(psi)
-
-        # R21 = cos(theta) * sin(psi)
-        # R22 = sin(phi) * sin(theta) * sin(psi) + cos(phi) * cos(psi)
-        # R23 = cos(phi) * sin(theta) * sin(psi) - sin(phi) * cos(psi)
-
-        # R31 = -sin(theta)
-        # R32 = sin(phi) * cos(theta)
-        # R33 = cos(phi)* cos(theta)
-        
         R11 = cos(theta) * cos(psi)
         R12 = -sin(psi)
         R13 = sin(theta) * cos(psi)
@@ -475,23 +430,13 @@ class solve_mpc(Node):
         y_dot = R21 * x_dot + R22 * y_dot + R23 * z_dot
         z_dot = R31 * x_dot + R32 * y_dot + R33 * z_dot
         
-        # Rotational kinematics
-        phi_dot = p + q * sin(phi) * tan(theta) + r * cos(phi) * tan(theta)
-        theta_dot = q * cos(phi) - r * sin(phi)
-        psi_dot = (q * sin(phi) + r * cos(phi)) / cos(theta)
-        
         # Translational accelerations considering thrust and angular velocities
-        acc_x = (thrust / self.m) * (cos(phi) * sin(theta) * cos(psi) + sin(phi) * sin(psi)) - (q * z_dot - r * y_dot)
-        acc_y = (thrust / self.m) * (cos(phi) * sin(theta) * sin(psi) - sin(phi) * cos(psi)) + (p * z_dot - r * x_dot)
-        acc_z = (thrust / self.m) * (cos(phi) * cos(theta)) - self.gravity + (p * y_dot - q * x_dot)
+        acc_x = (thrust / self.m) * (cos(phi) * sin(theta) * cos(psi) + sin(phi) * sin(psi)) - (q * z - r * y)
+        acc_y = (thrust / self.m) * (cos(phi) * sin(theta) * sin(psi) - sin(phi) * cos(psi)) + (q * x - r * z)
+        acc_z = (thrust / self.m) * (cos(phi) * cos(theta)) - self.gravity + (p * y - q * x)
         
-        # Rotational dynamics
-        p_dot = (self.I_y - self.I_z) / self.I_x * q * r + tau_phi / self.I_x
-        q_dot = (self.I_z - self.I_x) / self.I_y * p * r + tau_theta / self.I_y
-        r_dot = (self.I_x - self.I_y) / self.I_z * p * q + tau_psi / self.I_z
-
         # Return the 12 differential equations!
-        return vertcat(x_dot, y_dot, z_dot, acc_x, acc_y, acc_z, phi_dot, theta_dot, psi_dot, p_dot, q_dot, r_dot)
+        return vertcat(x_dot, y_dot, z_dot, acc_x, acc_y, acc_z)
 
 # Define the main function to run the node!
 def main(args=None):

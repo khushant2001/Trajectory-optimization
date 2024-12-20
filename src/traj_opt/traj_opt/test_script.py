@@ -7,8 +7,7 @@ from cflib.utils import uri_helper
 import numpy as np
 import time
 
-# uri = uri_helper.uri_from_env(default='radio://0/120/2M/E7E7E7E709')
-uri = uri_helper.uri_from_env(default='radio://0/90/2M/E7E7E7E7E7')
+uri = uri_helper.uri_from_env(default='radio://0/50/2M/E7E7E7E705')
 
 class cf_publisher(Node):
 
@@ -17,6 +16,7 @@ class cf_publisher(Node):
 
         # Connect some callbacks from the Crazyflie API
         super().__init__('crazyflie_publisher')
+        self.t0 = time.time()
         self.cf = Crazyflie(rw_cache='./cache')
         self.cf.connected.add_callback(self._connected)
         self.cf.disconnected.add_callback(self._disconnected)
@@ -32,10 +32,16 @@ class cf_publisher(Node):
         # Variable used to keep main loop occupied until disconnect
         self.is_connected = True
         self.cf.commander.send_setpoint(0,0,0,0)
-        self.timer = self.create_timer(5,self.timer_callback)
+        self.timer = self.create_timer(.05,self.timer_callback)
 
     def timer_callback(self):
-        self.cf.commander.send_setpoint(0,0,0,20000)
+        if (time.time() - self.t0) < 5:
+            print("Stage1")
+            self.cf.commander.send_setpoint(15,0,0,20000)
+        else:
+            print("Step 2")
+            self.t0 = self.t0 + time.time()
+            self.cf.commander.send_setpoint(15,15,0,20000)
 
     def _connected(self, link_uri):
         """ This callback is called form the Crazyflie API when a Crazyflie
