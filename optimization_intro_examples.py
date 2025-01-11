@@ -1,3 +1,7 @@
+"""
+Following are the demo examples of using CasaDy to optimize stuff! 
+"""
+
 from casadi import *
 import matplotlib.pyplot as plt
 import numpy as np

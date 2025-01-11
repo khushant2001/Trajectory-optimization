@@ -1,3 +1,7 @@
+"""
+Another transcription method which treats the dyanmics as polynomial fittings. Making the solver faster.
+Did not try this on the hardware yet! The HIL testing uses the multiple shooting transcription method!
+"""
 from casadi import *
 import matplotlib.pyplot as plt
 import numpy as np

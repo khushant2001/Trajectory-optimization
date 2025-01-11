@@ -1,3 +1,8 @@
+"""
+Consider this to be Simuilation in Loop test for the trajectory optimization on the crazyflie!
+The hardware testing code can be found in the /src folder. It is a ROS2 package. Needs to be built first!
+"""
+
 from casadi import *
 import numpy as np
 import matplotlib.pyplot as plt

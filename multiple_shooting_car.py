@@ -1,3 +1,8 @@
+"""
+Trying out a different transcription technique: Multiple shooting on the toy car problem.
+Faster when the problem explodes. Also, allows to optimize the state variables along with
+the control variables. So u can have better guess starts! HIL tests use multiple shooting!
+"""
 from casadi import *
 import matplotlib.pyplot as plt
 import numpy as np

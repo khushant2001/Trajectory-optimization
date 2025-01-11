@@ -1,3 +1,8 @@
+"""
+This is just a demo program which will be worked on later. Consider it to be a placeholder!
+I am learning and want to try the Graph of Convex Sets approach!
+"""
+
 import numpy as np
 import matplotlib.pyplot as plt
 import networkx as nx

@@ -1,3 +1,7 @@
+"""
+This is an example script of trajectory optimization using MPC and dynamic programming on a toy car!
+"""
+
 from casadi import *
 import matplotlib.pyplot as plt
 import numpy as np
