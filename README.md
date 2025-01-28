@@ -262,6 +262,12 @@ Fixed the hopping problem by debugging the discrepancy between the solving time 
 
 https://github.com/user-attachments/assets/ccb1cb2e-5620-464c-a3af-91578a165ee7
 
+![image](https://github.com/user-attachments/assets/a1b0b61c-58fa-4383-a6f7-ab91893c529e)
+
+![image](https://github.com/user-attachments/assets/a61063bc-0a1d-4c15-963a-48e659a5a59f)
+
+![image](https://github.com/user-attachments/assets/2fe948f4-4898-4733-a115-733a1dcfcb49)
+
 # 8. Instructions to run
 
 ## a. Running the Vicon Tracker System
