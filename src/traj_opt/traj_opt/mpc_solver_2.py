@@ -385,16 +385,16 @@ class solve_mpc(Node):
         yaw = yaw - self.time_constant*exp(-step_time*step_number/self.time_constant)*yaw_rate
         yaw_rate = yaw_rate + exp(-step_time*step_number/self.time_constant)*forces_moments[3]
         
-        k1 = self.dynamics(state, forces_moments)
-        k2 = self.dynamics(state + step_time/2.*k1, forces_moments)
-        k3 = self.dynamics(state + step_time/2.*k2, forces_moments)
-        k4 = self.dynamics(state + step_time*k3, forces_moments)
+        k1 = self.dynamics(state, forces_moments,roll,roll_rate,pitch,pitch_rate,yaw,yaw_rate)
+        k2 = self.dynamics(state + step_time/2.*k1, forces_moments,roll,roll_rate,pitch,pitch_rate,yaw,yaw_rate)
+        k3 = self.dynamics(state + step_time/2.*k2, forces_moments,roll,roll_rate,pitch,pitch_rate,yaw,yaw_rate)
+        k4 = self.dynamics(state + step_time*k3, forces_moments,roll,roll_rate,pitch,pitch_rate,yaw,yaw_rate)
 
         # Updated state after integration!
         state += step_time/6 * (k1 + 2*k2 + 2*k3 + k4)
         return state
 
-    def dynamics(self,state,control):
+    def dynamics(self,state,control,phi,p,theta,q,psi,r):
 
         """ This is the full 12 state dynamics used for the model in MPC declaration"""
         
@@ -431,9 +431,9 @@ class solve_mpc(Node):
         z_dot = R31 * x_dot + R32 * y_dot + R33 * z_dot
         
         # Translational accelerations considering thrust and angular velocities
-        acc_x = (thrust / self.m) * (cos(phi) * sin(theta) * cos(psi) + sin(phi) * sin(psi)) - (q * z - r * y)
-        acc_y = (thrust / self.m) * (cos(phi) * sin(theta) * sin(psi) - sin(phi) * cos(psi)) + (q * x - r * z)
-        acc_z = (thrust / self.m) * (cos(phi) * cos(theta)) - self.gravity + (p * y - q * x)
+        acc_x = (thrust / self.m) * (cos(phi) * sin(theta) * cos(psi) + sin(phi) * sin(psi)) - (q * z_dot - r * y_dot)
+        acc_y = (thrust / self.m) * (cos(phi) * sin(theta) * sin(psi) - sin(phi) * cos(psi)) + (p * z_dot - r * x_dot)
+        acc_z = (thrust / self.m) * (cos(phi) * cos(theta)) - self.gravity + (p * y_dot - q * x_dot)
         
         # Return the 12 differential equations!
         return vertcat(x_dot, y_dot, z_dot, acc_x, acc_y, acc_z)

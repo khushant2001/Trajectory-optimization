@@ -7,8 +7,8 @@ from cflib.utils import uri_helper
 import numpy as np
 import time
 
-uri = uri_helper.uri_from_env(default='radio://0/50/2M/E7E7E7E705')
-
+# uri = uri_helper.uri_from_env(default='radio://0/50/2M/E7E7E7E705')
+uri = uri_helper.uri_from_env(default='radio://0/90/2M/E7E7E7E7E7')
 class cf_publisher(Node):
 
     def __init__(self):
@@ -37,7 +37,7 @@ class cf_publisher(Node):
     def timer_callback(self):
         if (time.time() - self.t0) < 5:
             print("Stage1")
-            self.cf.commander.send_setpoint(15,0,0,20000)
+            self.cf.commander.send_setpoint(0,0,0,8000)
         else:
             print("Step 2")
             self.t0 = self.t0 + time.time()
