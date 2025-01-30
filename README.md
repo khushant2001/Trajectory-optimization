@@ -262,9 +262,15 @@ Fixed the hopping problem by debugging the discrepancy between the solving time 
 
 https://github.com/user-attachments/assets/ccb1cb2e-5620-464c-a3af-91578a165ee7
 
+Following is the XY trajectory graph of the crazyflie during the test run. The red point signifies the target, rc car here. The true state of the crazyflie along with the estimated state of the 5 horizon steps is also shown. As expected, the trajectory labeled /model_state_calcs5/state[0:1] is closest to the target because it is the trajectory of the 5th horizon step. 
+
 ![image](https://github.com/user-attachments/assets/a1b0b61c-58fa-4383-a6f7-ab91893c529e)
 
+A comparison graph of the true_state vs MPC state in terms of the XY position is also shown below to prove the validity of the MPC model.
+
 ![image](https://github.com/user-attachments/assets/a61063bc-0a1d-4c15-963a-48e659a5a59f)
+
+A comparison of the estimated linear x velocity of the MPC model vs the true state is shown below. The estimated velocity calculation is done using dirty differentiation (finite step differentiation + discrete low pass filter). 
 
 ![image](https://github.com/user-attachments/assets/2fe948f4-4898-4733-a115-733a1dcfcb49)
 
