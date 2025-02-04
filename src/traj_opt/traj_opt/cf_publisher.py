@@ -5,8 +5,9 @@ import cflib.crtp
 from cflib.crazyflie import Crazyflie
 from cflib.crazyflie.log import LogConfig
 from cflib.utils import uri_helper
-from custom_msgs.msg import Actuation
+from custom_msgs.msg import Actuation, LiftOff
 import numpy as np
+import time
 
 # Uri for the radio connection for the crazyflie! Will be changed depending upon the configuration!
 uri = uri_helper.uri_from_env(default='radio://0/90/2M/E7E7E7E7E7')
@@ -18,7 +19,10 @@ class cf_cmd_sender(Node):
         # Call the constructor of the parent class: Node!
         super().__init__('cf_publisher')
 
-        self.dt = 10 # msec to call the callback for getting the optimized input from the mpc!
+        self.dt = 10 # msec to call the timer!
+
+        # Recording the time!
+        self.t0 = time.time()
 
         # Connect some callbacks from the Crazyflie API
         self.cf = Crazyflie(rw_cache='./cache')
@@ -47,8 +51,12 @@ class cf_cmd_sender(Node):
         self.timer = self.create_timer(self.dt/1000,self.timer_callback)
 
         # Call the custom topic to get the optimized commands from MPC!
-        self.mpc_subscriber = self.create_subscription(Actuation, "/mpc_solution",self.mpc_callback, self.dt)
-    
+        self.mpc_subscriber = self.create_subscription(Actuation, "/mpc_solution",self.mpc_callback, 10)
+        
+        # Create message and publisher for the liftoff message
+        self.liftoff_check = LiftOff()
+        self.liftoff_publisher = self.create_publisher(LiftOff, "/liftoff", 10)
+
     def mpc_callback(self,msg_in):
 
         """ Get the updated MPC solution from the mpc_solver node """
@@ -61,10 +69,20 @@ class cf_cmd_sender(Node):
 
         """ Send commands to the crazyflie! """
         self.get_logger().info(f"Sending commands to Crazyflie! {self.command}")
+        
+        # Start hovering for the first 2 seconds!
+        if (time.time() - self.t0) < 3:
+            self.cf.commander.send_setpoint(self.command[0],self.command[1],self.command[2],int(self.command[3]))
+        
+        # Once it has hovered, update the liffoff flag to be true so the MPC can start solving!
+        else:
+            # Use the commander API from crazyflie library to send commands!
+            self.cf.commander.send_setpoint(self.command[0],self.command[1],self.command[2],int(self.command[3]))
 
-        # Use the commander API from crazyflie library to send commands!
-        self.cf.commander.send_setpoint(self.command[0],self.command[1],self.command[2],int(self.command[3]))
-    
+            # Update and publish the message!
+            self.liftoff_check.liftoff = True
+            self.liftoff_publisher.publish(self.liftoff_check)
+
     def _connected(self, link_uri):
 
         """ This callback is called form the Crazyflie API when a Crazyflie
