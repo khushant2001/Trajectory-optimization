@@ -22,7 +22,9 @@ setup(
         'console_scripts': [
             'test_script = traj_opt.test_script:main',
             'cf_publisher = traj_opt.cf_publisher:main',
-            'mpc_solver = traj_opt.mpc_solver:main'
+            'mpc_solver = traj_opt.mpc_solver:main',
+            'mpc_solver_2 = traj_opt.mpc_solver_2:main',
+            'traj_gen = traj_opt.hjb_traj_gen:main'
         ],
     },
 )
