@@ -274,6 +274,20 @@ A comparison of the estimated linear x velocity of the MPC model vs the true sta
 
 ![image](https://github.com/user-attachments/assets/2fe948f4-4898-4733-a115-733a1dcfcb49)
 
+## Test - 3
+
+Using lumped models for rotational dyanamics to account for the lag between sending setpoints and the controller on board to follow that setpoint. 
+
+## a. Time constant study for the pitch angle!
+
+Time constant = 300 msec
+
+![image](https://github.com/user-attachments/assets/c31ef995-9956-4169-ab90-6378c3734599)
+
+Filtered Data (Moving average filter: 10 samples)
+![image](https://github.com/user-attachments/assets/85903c41-ff3a-48ea-bb43-abd6c6dfd3ea)
+
+
 # 8. Instructions to run
 
 ## a. Running the Vicon Tracker System
