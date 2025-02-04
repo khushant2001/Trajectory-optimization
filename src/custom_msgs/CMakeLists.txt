@@ -16,6 +16,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/Actuation.msg"
   "msg/StateInfo.msg"
   "msg/OptimizedInput.msg"
+  "msg/LiftOff.msg"
   DEPENDENCIES geometry_msgs
  )
 
