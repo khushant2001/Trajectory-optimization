@@ -13,7 +13,7 @@ from vicon_receiver.msg import Position
 from casadi import *
 import numpy as np
 import math
-from custom_msgs.msg import Actuation, StateInfo, OptimizedInput
+from custom_msgs.msg import Actuation, StateInfo, OptimizedInput, LiftOff
 
 class solve_mpc(Node):
 
@@ -48,6 +48,9 @@ class solve_mpc(Node):
 
         # Variable to update the initial values for the optimization variables but just for the first time step!
         self.opt_var_update_first_step = True
+
+        # Variable to check if the liftoff has happened or not
+        self.liftoff_flag = False
 
         """
         Initialize Variables that will be used later in the program!
@@ -93,9 +96,12 @@ class solve_mpc(Node):
         # Create publisher to record the true state of the crazyflie (Used later in the plotjuggler)
         self.true_state_publisher = self.create_publisher(StateInfo, "/true_state", 10)
 
+        # Subscribe to the liftoff topic!
+        self.liftoff_check = self.create_subscription(LiftOff, '/liftoff', self.liftoff_callback, 10)
+
         # Create publisher to record the estimated state of the crazyflie (for all horizon steps) derived from the model in the MPC!
         self.model_state_publisher0 = self.create_publisher(StateInfo, "/model_state_calcs0", 10)
-        self.model_state_publisher1 = self.create_publisher(StateInfo, "/model_state_calcs", 10)
+        self.model_state_publisher1 = self.create_publisher(StateInfo, "/model_state_calcs1", 10)
         self.model_state_publisher2 = self.create_publisher(StateInfo, "/model_state_calcs2", 10)
         self.model_state_publisher3 = self.create_publisher(StateInfo, "/model_state_calcs3", 10)
         self.model_state_publisher4 = self.create_publisher(StateInfo, "/model_state_calcs4", 10)
@@ -152,7 +158,7 @@ class solve_mpc(Node):
         self.w_dot_max = 17.45 # rad/sec^2
         self.w_dot_min = -self.w_dot_max # rad/sec^2
         self.thrust_max = 1.9*self.m*self.gravity # 1.9 is the thrust to weight ratio
-        self.thrust_min = 0 # No reversible props so no reversible thrust!
+        self.thrust_min = self.m*self.gravity # No reversible props so no reversible thrust!
         self.tau_max = 0.001#0.0097 # Nm. Thrust produced by each motor = 0.294 N and the armlength is about 33 m. Torque = F x r
         self.tau_min = -self.tau_max
 
@@ -195,7 +201,7 @@ class solve_mpc(Node):
         self.obj = 0 # Cost function!!!
 
         # Define the weighting matrices!
-        Q = 100*DM.eye(3)
+        Q = 100*DM.eye(6)
         Q[2:2] *= 10
         R = 100*DM.eye(self.n_controls) # Adding more weight on the z
 
@@ -208,7 +214,7 @@ class solve_mpc(Node):
             next_state_estimate = self.runge_kutta_4(curr_state,curr_input)
             self.g = vertcat(self.g,self.state_prediction[:,i+1] - next_state_estimate) # Adding up the constraints in the g function!
 
-        self.obj = self.obj + ((self.state_prediction[0:3,-1] - self.p[self.n_states:self.n_states+3]).T @ Q @ (curr_state[0:3,-1] - self.p[self.n_states:3+self.n_states])) 
+        self.obj = self.obj + ((self.state_prediction[0:6,-1] - self.p[self.n_states:self.n_states+6]).T @ Q @ (curr_state[0:6,-1] - self.p[self.n_states:6+self.n_states])) 
         
         # Formulate the optimization problem and the corresponding optimization variables!
         self.opt_vars = vertcat(reshape(self.state_prediction,self.n_states*(self.horizon_steps + 1),1),reshape(self.control_prediction,self.n_controls*self.horizon_steps,1)) # You are not just optimizing v and w but all instances of them!
@@ -235,6 +241,11 @@ class solve_mpc(Node):
         
         # Creating a control prediction matrix which will be used later for the optimization!!
         self.u0 = DM.zeros(self.n_controls, self.horizon_steps)  # Initial control guess
+        self.u0[0,:] = 45000 + self.u0[0,:]
+
+    def liftoff_callback(self,msg):
+        self.get_logger().info('Checking if the liftoff has happened!')
+        self.liftoff_flag = msg.liftoff
 
     def calc_velocities(self,x,y,z,new_orientation):
 
@@ -316,7 +327,7 @@ class solve_mpc(Node):
 
         # Running the criteria for which the MPC is solved!
 
-        if self.convergance == False:
+        if self.convergance == False and self.liftoff_flag == True:
 
             """ Start the optimization sovler! """
 
@@ -390,11 +401,18 @@ class solve_mpc(Node):
                 self.convergance = True
 
                 # Sending a constant thrust command for the crazyflie to hover in place!
-                self.mpc_sol_msg.roll = 0
-                self.mpc_sol_msg.pitch = 0
-                self.mpc_sol_msg.yaw_rate = 0
-                self.mpc_sol_msg.thrust = 20000
+                self.mpc_sol_msg.roll = 0.0
+                self.mpc_sol_msg.pitch = 0.0
+                self.mpc_sol_msg.yaw_rate = 0.0
+                self.mpc_sol_msg.thrust = 40000
                 self.mpc_publisher.publish(self.mpc_sol_msg)
+        else:
+            # Sending a constant thrust command for the crazyflie to hover in place!
+            self.mpc_sol_msg.roll = 0.0
+            self.mpc_sol_msg.pitch = 0.0
+            self.mpc_sol_msg.yaw_rate = 0.0
+            self.mpc_sol_msg.thrust = 45000
+            self.mpc_publisher.publish(self.mpc_sol_msg)
 
     def quat2euler(self,w,x,y,z):
 
