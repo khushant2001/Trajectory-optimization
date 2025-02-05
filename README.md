@@ -276,11 +276,11 @@ A comparison of the estimated linear x velocity of the MPC model vs the true sta
 
 ## Test - 3
 
-Using lumped models for rotational dyanamics to account for the lag between sending setpoints and the controller on board to follow that setpoint. 
+Using lumped models for rotational dyanamics to account for the lag between sending setpoints and the controller on board to follow that setpoint.
 
 ## a. Time constant study for the pitch angle!
 
-Time constant = 300 msec
+A first order transfer function is used to simulate the lag between the crazyflie's response and input torques. This tf lumps up the dynamics, while disregarding the coupling between the three orientation axes. To determine the time constant for this first order lag transfer function, a test script is written which makes the drone for 2 seconds and then gives a step command of 5 degrees in pitch. The corresponding response is shown below and the time constant is determined to be 300 msec for the roll axis (which should match the pitch axis as well). The filtered version of the crazyflie's pitch is also shown below to provide more clarity. 
 
 ![image](https://github.com/user-attachments/assets/c31ef995-9956-4169-ab90-6378c3734599)
 
