@@ -50,16 +50,16 @@ class solve_mpc(Node):
         self.opt_var_update_first_step = True
 
         # Variable to check if the liftoff has happened or not
-        self.liftoff_flag = False
+        self.liftoff_flag = True
 
         """
         Initialize Variables that will be used later in the program!
         """
         # Initializing varaibels to store the position,orientation, and velocities of the crazyflie. 
-        self.cf_state_pos = np.array([0, 0, 0])
-        self.cf_state_orientation = np.array([1, 0, 0, 0])
-        self.cf_state_vel = np.array([0, 0, 0])
-        self.cf_rot_vel = np.array([0, 0, 0])
+        self.cf_state_pos = DM([0, 0, 0])
+        self.cf_state_orientation = DM([1, 0, 0, 0])
+        self.cf_state_vel = DM([0, 0, 0])
+        self.cf_rot_vel = DM([0, 0, 0])
 
         # Declaring state arrays for the initial and final state which will be used later for the optimization problem!
         self.x0 = DM([0,0,0,0,0,0,1,0,0,0,0,0,0])
@@ -161,7 +161,7 @@ class solve_mpc(Node):
         self.w_dot_max = 17.45 # rad/sec^2
         self.w_dot_min = -self.w_dot_max # rad/sec^2
         self.thrust_max = 1.9*self.m*self.gravity # 1.9 is the thrust to weight ratio
-        self.thrust_min = self.m*self.gravity # No reversible props so no reversible thrust!
+        self.thrust_min = 0 # No reversible props so no reversible thrust!
         self.tau_max = 0.001#0.0097 # Nm. Thrust produced by each motor = 0.294 N and the armlength is about 33 m. Torque = F x r
         self.tau_min = -self.tau_max
 
@@ -233,14 +233,15 @@ class solve_mpc(Node):
     def calc_velocities(self,x,y,z,new_orientation):
 
         """Do dirty differentiation for the calculation of velocities: translation and rotation!"""
-
+        self.get_logger().info('Calculating true velocities')
         # If the velocities are being calculated for the first time then skip because the state initialization is 0
         # but the actual position in the 3D space is not 0!
 
         if self.first_step_check == False:
 
             # Concatenate the positions in an array for ease of calculation and storage later!
-            new_pos = np.array([x,y,z])
+            new_pos = DM([x,y,z]).full()
+            new_orientation = new_orientation.full()
 
             # Calculate the velocities using finite difference method!
             cf_state_vel_temp = (new_pos - self.cf_state_pos)/(self.vicon_topic_update_time)
@@ -249,16 +250,16 @@ class solve_mpc(Node):
             roll, pitch, yaw = self.quat2euler(new_orientation[0], new_orientation[1], new_orientation[2], new_orientation[3])
             roll1, pitch1, yaw1 = self.quat2euler(self.cf_state_orientation[0], self.cf_state_orientation[1], self.cf_state_orientation[2], self.cf_state_orientation[3])
 
-            cf_rot_vel_temp = (np.array([roll, pitch, yaw]) - np.array([roll1, pitch1, yaw1]))/(self.vicon_topic_update_time)
-            self.get_logger().info(str(cf_rot_vel_temp))
+            cf_rot_vel_temp = (DM([roll, pitch, yaw]) - DM([roll1, pitch1, yaw1]))/(self.vicon_topic_update_time)
+
             # Pass the velocities through a discrete low pass filter!
-            self.cf_state_vel = self.alpha*cf_state_vel_temp + (1-self.alpha)*self.cf_state_vel
-            self.cf_rot_vel = self.alpha*cf_rot_vel_temp + (1-self.alpha)*self.cf_rot_vel
+            self.cf_state_vel = (self.alpha*cf_state_vel_temp + (1-self.alpha)*self.cf_state_vel).full()
+            self.cf_rot_vel = (self.alpha*cf_rot_vel_temp + (1-self.alpha)*self.cf_rot_vel).full()
             
             # Concatenate the true states and publish them to plotjuggler for analysis!
-            self.get_logger().info(str( [new_pos[0],new_pos[1],new_pos[2],self.cf_state_vel[0],self.cf_state_vel[1],self.cf_state_vel[2],
-                                        new_orientation[0],new_orientation[1],new_orientation[2], new_orientation[3], self.cf_rot_vel[0],
-                                        self.cf_rot_vel[1],self.cf_rot_vel[2]]))
+            self.true_state_msg.state = [new_pos[0].item(),new_pos[1].item(),new_pos[2].item(),self.cf_state_vel[0].item(),self.cf_state_vel[1].item(),self.cf_state_vel[2].item(),
+                                        new_orientation[0].item(),new_orientation[1].item(),new_orientation[2].item(), new_orientation[3].item(), self.cf_rot_vel[0].item(),
+                                        self.cf_rot_vel[1].item(),self.cf_rot_vel[2].item()]
             
             # Publish the message for the Plotjuggler to record it!
             self.true_state_publisher.publish(self.true_state_msg)
@@ -274,14 +275,14 @@ class solve_mpc(Node):
         self.get_logger().info("Updating Crazyflie's pose")
 
         # Dividing the translation measurements of x, y, z from vicon by 1000 to convert from mm to m! 
-        new_orientation = np.array([msg_in.w, msg_in.x_rot, msg_in.y_rot, msg_in.z_rot])
+        new_orientation = DM([msg_in.w, msg_in.x_rot, msg_in.y_rot, msg_in.z_rot])
 
         # Calculate the velocities and update state variables!
         self.calc_velocities(msg_in.x_trans/1000, msg_in.y_trans/1000, msg_in.z_trans/1000,new_orientation)
-        self.cf_state_pos = np.array([msg_in.x_trans/1000, msg_in.y_trans/1000, msg_in.z_trans/1000])
-        self.cf_state_orientation = new_orientation/sqrt(sumsqr(new_orientation))
+        self.cf_state_pos = DM([msg_in.x_trans/1000, msg_in.y_trans/1000, msg_in.z_trans/1000])
 
-        self.get_logger().info(str(self.cf_state_orientation[0]))
+        # Normalize the quaternions!
+        self.cf_state_orientation = new_orientation/sqrt(sumsqr(new_orientation))
         
         # Update the state of the crazyflie!
         self.x0 = DM([self.cf_state_pos[0], self.cf_state_pos[1], self.cf_state_pos[2],
@@ -345,8 +346,20 @@ class solve_mpc(Node):
             state_values = reshape(solution[:self.n_states * (self.horizon_steps + 1)], self.n_states, self.horizon_steps + 1)
             control_values = reshape(solution[self.n_states * (self.horizon_steps + 1):], self.n_controls, self.horizon_steps)
 
+            # Normalize the quaternions in the states!
+            for i in range(horizon_steps + 1):
+                state = state_values[:,i]
+                normE = sqrt(sumsqr(state_values[6:10,i]))
+
+                state_values[6,i] = state_values[6,i]/normE
+                state_values[7,i] = state_values[7,i]/normE
+                state_values[8,i] = state_values[8,i]/normE
+                state_values[9,i] = state_values[9,i]/normE
+
             # Extract the commands that are to be sent to the crazyflie!
             first_state = state_values[:,1].full()
+
+            # Extract the optimized control actions!
             u = control_values[:, 0]
 
             # Converting quaternions to euler angles:
