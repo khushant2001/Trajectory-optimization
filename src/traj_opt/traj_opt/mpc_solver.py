@@ -6,6 +6,7 @@ shooting is used as the transcription technique to discretize the dynamics. Also
 custom publishers for recording state information and the transmission of the MPC solution. 
 Using RK4 as the integrator of the dynamics in MPC. 
 
+The conversion of dirty diff from inertial to body frame is not provided here (FORGOT TO COMMIT)! Make sure to account for that!
 """
 import rclpy
 from rclpy.node import Node
